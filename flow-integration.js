@@ -83,6 +83,37 @@ function getUrlParams() {
 
 let urlParams = getUrlParams();
 
+function isDevOnlyReferralEnabled() {
+    try {
+        const env = (urlParams.get('env') || '').toLowerCase();
+        return env === 'dev' || window.location.hostname.includes('statekraft.webflow.io');
+    } catch (e) {
+        return false;
+    }
+}
+
+const DEV_ONLY_REFERRAL_ENABLED = isDevOnlyReferralEnabled();
+
+function preserveWebflowPasswordRedirectParams() {
+    try {
+        if (!DEV_ONLY_REFERRAL_ENABLED) return;
+        const passwordForm = document.querySelector('form.w-password-page[action="/.wf_auth"]');
+        if (!passwordForm) return;
+
+        const redirectPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        ['path', 'page'].forEach((name) => {
+            const input = passwordForm.querySelector(`input[name="${name}"]`);
+            if (input) {
+                input.value = redirectPath;
+            }
+        });
+    } catch (e) {
+        console.warn('Could not preserve Webflow password redirect params:', e);
+    }
+}
+
+preserveWebflowPasswordRedirectParams();
+
 function getEnvConfig() {
     try {
         const isWebflow = window.location.hostname.includes('.webflow.io');
@@ -162,6 +193,13 @@ window.SubscriptionFlowConfig = {
 
     const plan = urlParams.get('plan');
     const cycle = urlParams.get('cycle');
+    const referralCodeFromUrl = DEV_ONLY_REFERRAL_ENABLED ? (
+        urlParams.get('discountCode') ||
+        urlParams.get('ref') ||
+        urlParams.get('referralCode') ||
+        ''
+    ).trim() : '';
+    const referralRefFromUrl = DEV_ONLY_REFERRAL_ENABLED ? (urlParams.get('ref') || referralCodeFromUrl || '').trim() : '';
 
     const baseSubscribeUrl = `${window.location.origin}/subscribe`;
     const subscribeParams = new URLSearchParams();
@@ -174,6 +212,12 @@ window.SubscriptionFlowConfig = {
     }
     if (cycle) {
         subscribeParams.append('cycle', cycle);
+    }
+    if (referralRefFromUrl) {
+        subscribeParams.append('ref', referralRefFromUrl);
+    }
+    if (referralCodeFromUrl) {
+        subscribeParams.append('discountCode', referralCodeFromUrl);
     }
 
     const subscribeRedirectUri = subscribeParams.toString()
@@ -244,6 +288,7 @@ window.SubscriptionFlowConfig = {
             user: 'sk_webflow_user',
             sessionToken: 'sk_webflow_session_token',
             oktaResetState: 'sk_webflow_okta_reset_state',
+            referralContext: 'sk_webflow_referral_context',
         },
         setItem(key, value) {
             try {
@@ -289,6 +334,72 @@ window.SubscriptionFlowConfig = {
             } catch (e) { }
         },
     };
+
+    function getReferralContext() {
+        if (!DEV_ONLY_REFERRAL_ENABLED) return null;
+
+        const stored = Storage.getItem(Storage.keys.referralContext);
+        const discountCode = referralCodeFromUrl || stored?.discountCode || '';
+        const ref = referralRefFromUrl || stored?.ref || discountCode;
+
+        if (!discountCode) return null;
+
+        return {
+            discountCode,
+            ref,
+        };
+    }
+
+    function applyReferralContextToFormData() {
+        if (!DEV_ONLY_REFERRAL_ENABLED) return null;
+
+        const referralContext = getReferralContext();
+        if (!referralContext?.discountCode) return null;
+
+        Storage.setItem(Storage.keys.referralContext, referralContext);
+        AppState.formData = {
+            ...(AppState.formData || {}),
+            discountCode: referralContext.discountCode,
+        };
+        Storage.setItem(Storage.keys.formData, AppState.formData);
+
+        return referralContext;
+    }
+
+    function buildSubscribePath(extraParams = {}) {
+        const params = new URLSearchParams(subscribeParams);
+        const referralContext = getReferralContext();
+
+        if (referralContext?.ref && !params.has('ref')) {
+            params.set('ref', referralContext.ref);
+        }
+        if (referralContext?.discountCode && !params.has('discountCode')) {
+            params.set('discountCode', referralContext.discountCode);
+        }
+
+        Object.entries(extraParams).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            }
+        });
+
+        const query = params.toString();
+        return `/subscribe${query ? `?${query}` : ''}`;
+    }
+
+    function appendParamsToPath(path, extraParams = {}) {
+        const [pathname, queryString = ''] = path.split('?');
+        const params = new URLSearchParams(queryString);
+
+        Object.entries(extraParams).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            }
+        });
+
+        const query = params.toString();
+        return `${pathname}${query ? `?${query}` : ''}`;
+    }
 
     // ===========================================
     // API SERVICE
@@ -648,10 +759,21 @@ window.SubscriptionFlowConfig = {
             const accessToken = this.getAccessToken();
             const plan = CONFIG.plan.id;
             const cycle = CONFIG.plan.billingCycle;
-            const successUrl = `${window.location.origin}/payment-callback${subscribeParams.toString() ? `?${subscribeParams.toString()}` : ''}`;
-            subscribeParams.append('action', 'continue_signup');
-            subscribeParams.append('payment_status', 'cancelled');
-            const cancelUrl = `${window.location.origin}/subscribe${subscribeParams.toString() ? `?${subscribeParams.toString()}` : ''}`;
+            let successUrl;
+            let cancelUrl;
+            if (DEV_ONLY_REFERRAL_ENABLED) {
+                const checkoutParams = new URLSearchParams(subscribeParams);
+                successUrl = `${window.location.origin}/payment-callback${checkoutParams.toString() ? `?${checkoutParams.toString()}` : ''}`;
+                const cancelParams = new URLSearchParams(subscribeParams);
+                cancelParams.set('action', 'continue_signup');
+                cancelParams.set('payment_status', 'cancelled');
+                cancelUrl = `${window.location.origin}/subscribe${cancelParams.toString() ? `?${cancelParams.toString()}` : ''}`;
+            } else {
+                successUrl = `${window.location.origin}/payment-callback${subscribeParams.toString() ? `?${subscribeParams.toString()}` : ''}`;
+                subscribeParams.append('action', 'continue_signup');
+                subscribeParams.append('payment_status', 'cancelled');
+                cancelUrl = `${window.location.origin}/subscribe${subscribeParams.toString() ? `?${subscribeParams.toString()}` : ''}`;
+            }
             return this._fetchWithRetry(
                 `${CONFIG.api.baseUrl}/payments/checkout`,
                 {
@@ -754,6 +876,9 @@ window.SubscriptionFlowConfig = {
                     body: JSON.stringify({
                         sessionToken,
                         discountCode,
+                        ...(DEV_ONLY_REFERRAL_ENABLED && {
+                            email: AppState.user?.email || AppState.formData?.email,
+                        }),
                     }),
                 },
                 accessToken
@@ -933,6 +1058,15 @@ window.SubscriptionFlowConfig = {
             trialGroupInput.addEventListener('click', () => {
                 const personalForm = document.querySelector('#personalDetailsForm');
                 const discountInput = personalForm.querySelector('[name="discountCode"]');
+                const referralContext = DEV_ONLY_REFERRAL_ENABLED ? getReferralContext() : null;
+
+                if (
+                    referralContext?.discountCode &&
+                    discountInput?.value?.trim().toUpperCase() === referralContext.discountCode.toUpperCase()
+                ) {
+                    trialGroupInput.classList.remove('active');
+                    return;
+                }
 
                 trialGroupInput.classList.toggle('active')
 
@@ -1139,7 +1273,9 @@ window.SubscriptionFlowConfig = {
 
         // Show modal when user already has a subscription (ACTIVE_SUBSCRIPTION_EXISTS). Registration path is for new users only.
         showAlreadyRegisteredModal(signInUrl) {
-            const message = 'This account is already registered. Please go to the sign in page to log in.';
+            const message = DEV_ONLY_REFERRAL_ENABLED
+                ? 'This email address is already associated with a Statekraft account. Log in instead?'
+                : 'This account is already registered. Please go to the sign in page to log in.';
             devLog('showAlreadyRegisteredModal', { signInUrl });
 
             const closeAndLogout = () => {
@@ -1235,7 +1371,12 @@ window.SubscriptionFlowConfig = {
 
             ['address', 'phoneNumber', 'abn', 'businessInfo', 'invoiceAddress', 'discountCode'].forEach(id => {
                 const input = document.getElementById(id);
-                if (input && data[id]) input.value = data[id];
+                if (input && data[id]) {
+                    input.value = data[id];
+                    if (DEV_ONLY_REFERRAL_ENABLED) {
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                }
             });
         },
 
@@ -1516,7 +1657,9 @@ window.SubscriptionFlowConfig = {
                 i18n: {
                     en: {
                         // Custom duplicate-email message
-                        'error.EmailExists': 'This account already exists. Please use a different email.',
+                        'error.EmailExists': DEV_ONLY_REFERRAL_ENABLED
+                            ? 'This email address is already associated with a Statekraft account. Log in instead?'
+                            : 'This account already exists. Please use a different email.',
                         // Common additional cases
                         'error.AccountLocked': 'Your account is locked. Please contact support.',
                         'error.TooManyAttempts': 'Too many attempts. Please wait a moment and try again.',
@@ -1639,7 +1782,12 @@ window.SubscriptionFlowConfig = {
                     const errorMsg = error.message || error.errorSummary || '';
                     if (errorMsg.includes('already exists') || errorMsg.includes('already registered')) {
                         // Duplicate user / email already registered
-                        UI.showError('step1Error', 'Account was already registered. Please use a different email.');
+                        UI.showError(
+                            'step1Error',
+                            DEV_ONLY_REFERRAL_ENABLED
+                                ? 'This email address is already associated with a Statekraft account. Log in instead?'
+                                : 'Account was already registered. Please use a different email.',
+                        );
                     } else if (!errorMsg.includes('cancelled')) {
                         UI.showError('step1Error', errorMsg || 'Authentication failed. Please try again.');
                     }
@@ -1693,6 +1841,7 @@ window.SubscriptionFlowConfig = {
                     lastName: userInfo.lastName,
                 };
                 Storage.setItem(Storage.keys.formData, AppState.formData);
+                applyReferralContextToFormData();
 
                 if (accessToken) {
                     const result = await API.initiateAuthenticatedSubscription(
@@ -1904,7 +2053,7 @@ window.SubscriptionFlowConfig = {
         }
         if (error) {
             console.error('Auth error:', error);
-            window.location.href = '/subscribe';
+            window.location.href = DEV_ONLY_REFERRAL_ENABLED ? buildSubscribePath() : '/subscribe';
             return;
         }
 
@@ -1912,7 +2061,9 @@ window.SubscriptionFlowConfig = {
             // Tokens should be handled by OktaAuth SDK
             // Redirect back to main flow
             setTimeout(() => {
-                window.location.href = '/subscribe' + (methodLogin ? `?method=${methodLogin}` : '');
+                window.location.href = DEV_ONLY_REFERRAL_ENABLED
+                    ? buildSubscribePath(methodLogin ? { method: methodLogin } : {})
+                    : '/subscribe' + (methodLogin ? `?method=${methodLogin}` : '');
             }, 1000);
         }
     }
@@ -1926,7 +2077,9 @@ window.SubscriptionFlowConfig = {
 
         if (!sessionToken) {
             alert('Session expired. Please start over.');
-            window.location.href = '/subscribe?' + (envParams ? `env=${envParams}` : '');
+            window.location.href = DEV_ONLY_REFERRAL_ENABLED
+                ? buildSubscribePath(envParams ? { env: envParams } : {})
+                : '/subscribe?' + (envParams ? `env=${envParams}` : '');
             return;
         }
         {
@@ -1936,6 +2089,9 @@ window.SubscriptionFlowConfig = {
                 const plan = urlParams.get('plan');
                 const retryParams = new URLSearchParams({ payment_status: status, action: 'continue_signup', cycle, plan });
                 if (envParams) retryParams.append('env', envParams);
+                const referralContext = getReferralContext();
+                if (referralContext?.ref) retryParams.set('ref', referralContext.ref);
+                if (referralContext?.discountCode) retryParams.set('discountCode', referralContext.discountCode);
                 window.location.href = '/subscribe?' + retryParams.toString();
                 return;
             }
@@ -1966,6 +2122,9 @@ window.SubscriptionFlowConfig = {
                 console.error('Error verifying payment:', error);
                 const retryParams = new URLSearchParams({ payment_status: 'failed', action: 'continue_signup' });
                 if (envParams) retryParams.append('env', envParams);
+                const referralContext = getReferralContext();
+                if (referralContext?.ref) retryParams.set('ref', referralContext.ref);
+                if (referralContext?.discountCode) retryParams.set('discountCode', referralContext.discountCode);
                 window.location.href = '/subscribe?' + retryParams.toString();
             }
         }
@@ -1996,7 +2155,9 @@ window.SubscriptionFlowConfig = {
         }
 
         const from = urlParams.get('from') || localStorage.getItem('from');
-        const redirectSuccessUrl = CONFIG.callbacks.success + (envParams ? `?env=${envParams}` : '') || '/success';
+        const redirectSuccessUrl = DEV_ONLY_REFERRAL_ENABLED
+            ? appendParamsToPath(CONFIG.callbacks.success || '/success', envParams ? { env: envParams } : {})
+            : CONFIG.callbacks.success + (envParams ? `?env=${envParams}` : '') || '/success';
         if (from === 'mobile') {
             window.location.href = 'statekraft://callback';
             setTimeout(() => {
@@ -2169,6 +2330,7 @@ window.SubscriptionFlowConfig = {
         AppState.formData = Storage.getItem(Storage.keys.formData) || {};
         AppState.user = Storage.getItem(Storage.keys.user);
         AppState.tokens = Storage.getItem(Storage.keys.tokens);
+        applyReferralContextToFormData();
 
         if (wasReloadWithFlag) {
             await clearStateAndStorage();
