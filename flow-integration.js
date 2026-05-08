@@ -379,8 +379,6 @@ window.SubscriptionFlowConfig = {
         if (input.value !== discountCode) {
             input.value = discountCode;
         }
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function buildSubscribePath(extraParams = {}) {
