@@ -1233,7 +1233,6 @@ window.SubscriptionFlowConfig = {
                 UI.setAddressActionCheck();
                 setTimeout(() => {
                     applyReferralContextToFormData();
-                    UI.prefillForms();
                 }, 0);
             }
         },
@@ -1394,9 +1393,6 @@ window.SubscriptionFlowConfig = {
                 const input = document.getElementById(id);
                 if (input && data[id]) {
                     input.value = data[id];
-                    if (DEV_ONLY_REFERRAL_ENABLED) {
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
                 }
             });
         },
@@ -1873,9 +1869,9 @@ window.SubscriptionFlowConfig = {
                     devLog('✅ Authenticated subscription initiated:', result);
                     if (result) {
                         // await API.getRoleItem(accessToken);
+                        UI.prefillForms();
                         UI.hideLoading();
                         UI.goToStep(2);
-                        UI.prefillForms();
                         const form = document.getElementById('personalDetailsForm');
                         UI.updateUIShowProgressIndicator()
                         UI.setAddressActionCheck()
@@ -2413,8 +2409,8 @@ window.SubscriptionFlowConfig = {
 
             // If session is still valid, resume from step 2
             if (AppState.tokens && AppState.user) {
-                UI.goToStep(2);
                 UI.prefillForms();
+                UI.goToStep(2);
                 UI.updateUIShowProgressIndicator()
                 UI.setAddressActionCheck()
                 setTimeout(() => {
