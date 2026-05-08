@@ -362,8 +362,25 @@ window.SubscriptionFlowConfig = {
             discountCode: referralContext.discountCode,
         };
         Storage.setItem(Storage.keys.formData, AppState.formData);
+        syncReferralDiscountInput(referralContext.discountCode);
 
         return referralContext;
+    }
+
+    function syncReferralDiscountInput(discountCode) {
+        if (!DEV_ONLY_REFERRAL_ENABLED || !discountCode) return;
+
+        const input =
+            document.getElementById('discountCode') ||
+            document.querySelector('[name="discountCode"]');
+
+        if (!input) return;
+
+        if (input.value !== discountCode) {
+            input.value = discountCode;
+        }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function buildSubscribePath(extraParams = {}) {
@@ -1214,6 +1231,10 @@ window.SubscriptionFlowConfig = {
             if (step >= 2) {
                 ensureSignupFormHandlers();
                 UI.setAddressActionCheck();
+                setTimeout(() => {
+                    applyReferralContextToFormData();
+                    UI.prefillForms();
+                }, 0);
             }
         },
         goToStepOkta({ step, currentStep, action = 'next' }) {
@@ -1852,9 +1873,9 @@ window.SubscriptionFlowConfig = {
                     devLog('✅ Authenticated subscription initiated:', result);
                     if (result) {
                         // await API.getRoleItem(accessToken);
-                        UI.prefillForms();
                         UI.hideLoading();
                         UI.goToStep(2);
+                        UI.prefillForms();
                         const form = document.getElementById('personalDetailsForm');
                         UI.updateUIShowProgressIndicator()
                         UI.setAddressActionCheck()
@@ -2392,8 +2413,8 @@ window.SubscriptionFlowConfig = {
 
             // If session is still valid, resume from step 2
             if (AppState.tokens && AppState.user) {
-                UI.prefillForms();
                 UI.goToStep(2);
+                UI.prefillForms();
                 UI.updateUIShowProgressIndicator()
                 UI.setAddressActionCheck()
                 setTimeout(() => {
