@@ -15,6 +15,7 @@ This repository contains two JavaScript bundles designed to be embedded in a Web
 |---|---|
 | `integration.js` | Page router, GSAP/ScrollTrigger animations, Swiper carousels, Lenis smooth scroll, and per-page custom element registration. Also bootstraps the subscription flow on relevant routes. |
 | `flow-integration.js` | Full subscription flow bundle — environment config, Okta Sign-In Widget setup, multi-step form logic, Stripe/Airwallex payment handling, API service layer, and UI state management. |
+| `datadog-init.js` | Datadog RUM async loader and init — goes in Webflow's **Head Code** (not site-wide custom code). Auto-detects environment from hostname and attributes sessions to the Okta sub via `DD_RUM.setUser` once auth resolves in `flow-integration.js`. |
 
 ## Pages and Routes
 
@@ -51,6 +52,7 @@ State is persisted to `localStorage`/`sessionStorage` so users can resume an int
 | **Lenis** | Smooth scroll engine integrated with GSAP ticker |
 | **Swiper** | Touch-friendly carousels for pricing cards, reviews, and value propositions |
 | **AOS** | Auxiliary reveal-on-scroll animations |
+| **Datadog RUM** | Real User Monitoring — page performance, errors, and Session Replay. AP2 region, `service: statekraft-marketing`. Shares the RUM application with the Next.js app so cross-surface user journeys join on the Okta sub. |
 
 ## Environments
 
@@ -64,11 +66,12 @@ The app supports three environments, selected automatically by hostname or overr
 
 ## Usage
 
-Both scripts are intended to be included via Webflow's Custom Code settings:
+The scripts are included via Webflow's Custom Code settings:
 
-1. Add `flow-integration.js` to the site-wide custom code (handles auth/payment flow on subscribe pages).
-2. Add `integration.js` to the site-wide custom code (handles page routing, animations, and bootstrapping the subscription flow).
-3. Ensure the following external dependencies are loaded before these scripts:
+1. Paste `datadog-init.js` into **Site Settings → Custom Code → Head Code**, wrapped in `<script>...</script>` tags. This must load before the other two scripts so RUM captures their errors and the full page lifecycle.
+2. Add `flow-integration.js` to the site-wide custom code (handles auth/payment flow on subscribe pages).
+3. Add `integration.js` to the site-wide custom code (handles page routing, animations, and bootstrapping the subscription flow).
+4. Ensure the following external dependencies are loaded before these scripts:
    - jQuery
    - GSAP + ScrollTrigger
    - Lenis

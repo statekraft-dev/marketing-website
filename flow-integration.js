@@ -1685,6 +1685,19 @@ window.SubscriptionFlowConfig = {
             if (userInfo) {
                 AppState.user = userInfo;
                 Storage.setItem(Storage.keys.user, userInfo);
+
+                // Attribute RUM session to the Okta sub so this surface joins
+                // app-frontend and APM traces on the same identifier.
+                try {
+                    if (window.DD_RUM && typeof window.DD_RUM.setUser === 'function') {
+                        window.DD_RUM.setUser({
+                            id: userInfo.id,
+                            ...(userInfo.email ? { email: userInfo.email } : {}),
+                            ...(userInfo.name ? { name: userInfo.name } : {}),
+                        });
+                    }
+                } catch (e) { /* RUM not initialized — drop */ }
+
                 // Reset formData for new account so old session data (address, phone, etc.) is not carried over
                 AppState.formData = {
                     email: userInfo.email,
