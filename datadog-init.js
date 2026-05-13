@@ -1,11 +1,6 @@
 /**
  * Statekraft Marketing Site — Datadog RUM Initialization
  *
- * Paste contents into Webflow Site Settings → Custom Code → Head Code
- * (wrap in <script>...</script> tags). Loads as early as possible so RUM
- * captures the full page lifecycle including errors thrown by
- * integration.js and flow-integration.js.
- *
  * Shares the RUM application with apps/next-web and apps/next-app — same
  * applicationId / clientToken — so cross-surface user journeys join on the
  * Okta sub set via DD_RUM.setUser in flow-integration.js.
