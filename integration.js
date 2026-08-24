@@ -468,6 +468,9 @@ const script = async () => {
                         const cycle = $('.home-pricing-toggle').hasClass('per-month') ? 'monthly' : 'annual';
                         $('.home-pricing-btn').each(function () {
                             const plan = $(this).attr('data-plan') || 'nest';
+                            // Only wire CTAs for plans the wizard sells; leave other
+                            // buttons (e.g. Coming Soon cards) on their Webflow hrefs
+                            if (plan !== 'nest' && plan !== 'perch') return;
                             $(this).attr('href', `/subscribe?plan=${encodeURIComponent(plan)}&cycle=${cycle}`);
                         });
                     };
