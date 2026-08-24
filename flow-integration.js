@@ -155,9 +155,8 @@ const PLAN_CATALOG = {
         id: 'nest',
         name: 'Nest',
         price: {
-            monthly: 49.50,
-            annual: 495,
-            original: 66
+            monthly: 72,
+            annual: 726
         }
     },
     perch: {
