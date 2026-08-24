@@ -462,16 +462,19 @@ const script = async () => {
                         slidesPerView: 'auto',
                         spaceBetween: cvUnit(24, 'rem')
                     });
-                    // $('.home-pricing-btn').each(function (idx, item) {
-                    //     $(this).attr('href', `${$(this).attr('href')}#${$(this).attr('data-plan')}`);
-                    // })
+                    // Per-card plan CTAs: each button links its own data-plan (nest when absent)
+                    // with the cycle from the billing toggle
+                    const applyPricingHrefs = () => {
+                        const cycle = $('.home-pricing-toggle').hasClass('per-month') ? 'monthly' : 'annual';
+                        $('.home-pricing-btn').each(function () {
+                            const plan = $(this).attr('data-plan') || 'nest';
+                            $(this).attr('href', `/subscribe?plan=${encodeURIComponent(plan)}&cycle=${cycle}`);
+                        });
+                    };
+                    if ($('.home-pricing-toggle').length) applyPricingHrefs();
                     $('.home-pricing-toggle-btn, .home-pricing-toggle-title').on('click', function (e) {
                         $('.home-pricing-toggle').toggleClass('per-month');
-                        if (!$('.home-pricing-toggle').hasClass('per-month')) {
-                            $('.home-pricing-btn').attr('href', '/subscribe?plan=nest&cycle=annual')
-                        } else {
-                            $('.home-pricing-btn').attr('href', '/subscribe?plan=nest&cycle=monthly')
-                        }
+                        applyPricingHrefs();
                     });
                 }
                 destroy() {

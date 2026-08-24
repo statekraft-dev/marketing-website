@@ -147,6 +147,35 @@ try {
     devLog(`Environment: ${envKey}`);
 }
 
+// Plans purchasable from the marketing site. Prices are GST-inclusive display
+// values only — the actual charge comes from the plan's Stripe price IDs server-side.
+// `original` (strikethrough price) is optional; plans without one hide that element.
+const PLAN_CATALOG = {
+    nest: {
+        id: 'nest',
+        name: 'Nest',
+        price: {
+            monthly: 49.50,
+            annual: 495,
+            original: 66
+        }
+    },
+    perch: {
+        id: 'perch',
+        name: 'Perch',
+        price: {
+            monthly: 249,
+            annual: 2200
+        }
+    }
+};
+
+function getSelectedPlan() {
+    const requested = (urlParams.get('plan') || '').toLowerCase();
+    const plan = PLAN_CATALOG[requested] || PLAN_CATALOG.nest;
+    return { ...plan, price: { ...plan.price }, billingCycle: 'monthly' };
+}
+
 window.SubscriptionFlowConfig = {
     // Okta Configuration
     okta: {
@@ -169,17 +198,8 @@ window.SubscriptionFlowConfig = {
         cancelUrl: `${window.location.origin}/subscribe`,
     },
 
-    // Subscription Plan
-    plan: {
-        id: 'nest',
-        name: 'Nest',
-        price: {
-            monthly: 49.50,
-            annual: 495,
-            original: 66
-        },
-        billingCycle: 'monthly'
-    },
+    // Subscription Plan — resolved from ?plan= against PLAN_CATALOG, defaults to nest
+    plan: getSelectedPlan(),
 
     // Callback Pages
     callbacks: {
@@ -241,12 +261,7 @@ window.SubscriptionFlowConfig = {
             returnUrl: '',
             cancelUrl: '',
         },
-        plan: {
-            id: 'nest',
-            name: 'Nest',
-            price: { monthly: 49.50, annual: 495, original: 66 },
-            billingCycle: 'monthly',
-        },
+        plan: getSelectedPlan(),
         callbacks: {
             auth: `/callback${subscribeParams.toString() ? `?${subscribeParams.toString()}` : ''}`,
             payment: `/payment-callback`,
@@ -1115,9 +1130,10 @@ window.SubscriptionFlowConfig = {
                 if (titleSignIn) {
                     titleSignIn.textContent = 'Create new account';
 
-                    // Add a subtitle right under the main okta title (idempotent)
+                    // Add a subtitle right under the main okta title (idempotent).
+                    // First-month-free offer is Nest-only — don't claim it for other plans.
                     let subTitle = document.querySelector('.okta-form-subtitle.custom-subtitle');
-                    if (!subTitle) {
+                    if (!subTitle && CONFIG.plan.id === 'nest') {
                         subTitle = document.createElement('h3');
                         subTitle.className = 'okta-form-title custom-subtitle';
                         subTitle.style.marginBottom = '2.4rem';
@@ -1373,7 +1389,15 @@ window.SubscriptionFlowConfig = {
 
             ['displayOriginalPrice'].forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.textContent = originalPrice.toFixed(2);
+                if (!el) return;
+                // Not every plan has a strikethrough "original" price (Perch doesn't)
+                const wrapper = el.closest('[data-plan-original]') || el;
+                if (typeof originalPrice === 'number') {
+                    el.textContent = originalPrice.toFixed(2);
+                    wrapper.style.display = '';
+                } else {
+                    wrapper.style.display = 'none';
+                }
             });
         },
 
