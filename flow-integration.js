@@ -1377,6 +1377,30 @@ window.SubscriptionFlowConfig = {
             (document.body || document.documentElement).appendChild(el);
         },
 
+        // Show only the sidebar plan card matching the selected plan. Cards are
+        // Webflow-authored `.signup-hero-item` blocks tagged data-plan="nest|perch".
+        // No-op when no card matches (e.g. before the Perch card exists in Webflow),
+        // so the page keeps rendering exactly as today.
+        applySelectedPlanToPage() {
+            const planId = CONFIG.plan.id;
+            const cards = Array.from(document.querySelectorAll('.signup-hero-item[data-plan]'));
+            const match = cards.find(card => (card.getAttribute('data-plan') || '').toLowerCase() === planId);
+            if (!match) return;
+
+            // Remove (not hide) the other cards so the mobile swiper never gets a blank slide
+            cards.forEach(card => {
+                if (card !== match) card.remove();
+            });
+            try {
+                document.querySelector('.signup-hero-main')?.swiper?.update();
+            } catch (e) { /* swiper not initialised yet — nothing to update */ }
+
+            // "Sign up to <Plan>" header — same element integration.js writes on card selection
+            document.querySelectorAll('.plan-hero-main-head-title .txt').forEach(el => {
+                el.textContent = `Sign up to ${CONFIG.plan.name}`;
+            });
+        },
+
         updatePriceDisplays() {
             const price = CONFIG.plan.price[AppState.billingCycle];
             const originalPrice = CONFIG.plan.price.original;
@@ -2337,6 +2361,7 @@ window.SubscriptionFlowConfig = {
 
             devLog('AppState.tokens', AppState.tokens, AppState.user)
             if (AppState.tokens && AppState.user) {
+                UI.applySelectedPlanToPage();
                 UI.updatePriceDisplays();
                 UI.prefillForms();
                 UI.updateConfirmationPage();
@@ -2387,6 +2412,7 @@ window.SubscriptionFlowConfig = {
             await clearStateAndStorage();
         }
 
+        UI.applySelectedPlanToPage();
         UI.updatePriceDisplays();
 
         // Setup form handlers (idempotent; goToStep also calls ensureSignupFormHandlers when forms mount later)
