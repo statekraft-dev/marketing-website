@@ -591,6 +591,14 @@ window.SubscriptionFlowConfig = {
                 }
                 return data;
             } catch (e) {
+                if (e?.errorCode === 'SEAT_HOLDER') {
+                    // STK-961: the caller already holds a Perch seat paid for by their
+                    // team's account manager. They must never start a subscription of
+                    // their own — send them to the app instead.
+                    const signInUrl = typeof envConfig !== 'undefined' && envConfig.baseUrl ? envConfig.baseUrl : '/';
+                    UI.showSeatHolderModal(signInUrl);
+                    return
+                }
                 if (e?.errorCode?.includes("ACTIVE_SUBSCRIPTION_EXISTS")) {
                     const signInUrl = typeof envConfig !== 'undefined' && envConfig.baseUrl ? envConfig.baseUrl : '/';
                     UI.showAlreadyRegisteredModal(signInUrl);
@@ -1310,7 +1318,26 @@ window.SubscriptionFlowConfig = {
                 ? 'This email address is already associated with a Statekraft account. Log in instead?'
                 : 'This account is already registered. Please go to the sign in page to log in.';
             devLog('showAlreadyRegisteredModal', { signInUrl });
+            this.showRedirectToSignInModal(signInUrl, {
+                message,
+                hint: 'Registration is for new accounts only. Use the app to sign in or manage your subscription.',
+            });
+        },
 
+        // STK-961: shown when the BFF answers 409 SEAT_HOLDER — the signed-in user
+        // already has Perch access through a seat on their team's subscription, so
+        // the paid wizard is the wrong place for them.
+        showSeatHolderModal(signInUrl) {
+            devLog('showSeatHolderModal', { signInUrl });
+            this.showRedirectToSignInModal(signInUrl, {
+                message: 'Your Statekraft access is provided by your team.',
+                hint: 'There is nothing to pay for here. Sign in to the app to get started.',
+            });
+        },
+
+        // Shared singleton modal for both cases above. Same element id and classes
+        // so the existing styles apply; only the copy differs per call.
+        showRedirectToSignInModal(signInUrl, { message, hint }) {
             const closeAndLogout = () => {
                 const modal = document.getElementById('sb-already-registered-modal');
                 if (!modal) return;
@@ -1325,6 +1352,8 @@ window.SubscriptionFlowConfig = {
             let el = document.getElementById('sb-already-registered-modal');
             if (el) {
                 el.querySelector('.sb-already-registered-message').textContent = message;
+                const hintEl = el.querySelector('.sb-already-registered-hint');
+                if (hintEl) hintEl.textContent = hint;
                 el.querySelector('.sb-already-registered-go').onclick = (e) => {
                     e.preventDefault();
                     API.logout();
@@ -1345,11 +1374,13 @@ window.SubscriptionFlowConfig = {
                 '<div class="sb-already-registered-backdrop"></div>' +
                 '<div class="sb-already-registered-box">' +
                 '<button type="button" class="sb-already-registered-close" aria-label="Close">×</button>' +
-                '<p class="sb-already-registered-message">' + message + '</p>' +
-                '<p class="sb-already-registered-hint">Registration is for new accounts only. Use the app to sign in or manage your subscription.</p>' +
+                '<p class="sb-already-registered-message"></p>' +
+                '<p class="sb-already-registered-hint"></p>' +
                 '<div class="sb-already-registered-actions">' +
                 '<a href="' + signInUrl + '" class="sb-already-registered-go sb-btn sc-btn-brand">Go to Sign in</a>' +
                 '</div></div>';
+            el.querySelector('.sb-already-registered-message').textContent = message;
+            el.querySelector('.sb-already-registered-hint').textContent = hint;
             const style = document.createElement('style');
             style.textContent =
                 // Use max-ish z-index to avoid being hidden behind Webflow/Okta overlays
