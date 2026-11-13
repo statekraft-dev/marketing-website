@@ -27,7 +27,7 @@ window.DD_RUM.onReady(function () {
         env = override;
     } else if (override === 'PRODUCTION' || override === 'PROD') {
         env = 'Prod';
-    } else if (host === 'statekraft.au' || host === 'www.statekraft.au') {
+    } else if (host === 'statekraft.au' || host === 'www.statekraft.au' || host === 'join.statekraft.au') {
         env = 'Prod';
     } else if (host.indexOf('.webflow.io') !== -1) {
         env = 'UAT';
